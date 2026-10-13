@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#1a1428"><title>极限刹车 · 点刹挑战</title>  <script type="module" crossorigin src="./assets/index-BbzM5but.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BMdUF1Su.css">
+</head><body>
+<canvas id="c"></canvas>
+<div id="hud" class="hidden">
+  <div class="top"><div class="box"><b id="spd">0</b><small>km/h</small></div>
+  <div class="box dist"><small>距路障</small><b id="dst">2600</b><small>m</small><div class="bar"><i id="dbar"></i></div></div></div>
+  <div class="gauge"><div class="gfill" id="gf"></div><div class="red"></div><span class="gl">1612N</span><b id="fn">0 N</b></div>
+  <div id="hint">车速 ≥100 km/h 后 按住屏幕 / 空格 刹车</div>
+  <button id="brake" aria-label="刹车">刹</button>
+</div>
+<div id="toast"></div>
+<div id="menu" class="panel">
+  <h1>极限刹车<span>点刹挑战</span></h1>
+  <p class="rule">全油门冲刺，车速过 <b>100</b> 后才能刹车（一刹即断动力）。<br>按住越久力度涨得越快，超过 <b class="r">1612 N</b> 踏板就断！<br>点刹控力，在 <b>2600 m</b> 路障前停下。</p>
+  <label>车牌昵称 <input id="plate" maxlength="8" placeholder="粤B·12345"></label>
+  <button id="start" class="btn">开始挑战</button>
+  <h3>本机排行榜</h3><ol id="lb"></ol>
+  <p class="foot">得分 = 初速² ÷ 刹车用时^1.7 · 原创致敬作品</p>
+</div>
+<div id="cd" class="hidden"></div>
+<div id="result" class="panel hidden">
+  <h2 id="rt"></h2><p id="rd"></p><canvas id="chart" width="560" height="200"></canvas>
+  <div class="row"><button id="again" class="btn">再来一次</button><button id="home" class="btn ghost">返回菜单</button></div>
+</div></body></html>
