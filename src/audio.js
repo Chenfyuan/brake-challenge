@@ -17,14 +17,15 @@ export function initAudio() {
   sqGain = ctx.createGain(); sqGain.gain.value = 0; sq.connect(sqGain).connect(master); sq.start();
   initAudio.noise = buf;
 }
-export function updateAudio(kmh, powerOn, force, active) {
+export function updateAudio(kmh, powerOn, force, active, slip = 0) {
   if (!ctx) return; const t = ctx.currentTime;
   const rpm = 40 + (kmh % 60) * 2.2 + kmh * .5;
   eng.frequency.setTargetAtTime(rpm, t, .05); eng2.frequency.setTargetAtTime(rpm * .5, t, .05);
   engGain.gain.setTargetAtTime(active ? (powerOn ? .22 : .06) : 0, t, .1);
   windGain.gain.setTargetAtTime(active ? Math.min(.35, kmh / 700) : 0, t, .1);
-  sqGain.gain.setTargetAtTime(active && force > 300 && kmh > 5 ? Math.min(.12, force / 12000) : 0, t, .03);
-  sq.frequency.setTargetAtTime(1400 + force * .4 + Math.random() * 80, t, .02);
+  // 轮胎尖叫：滑移率 > 0.2 时出现，音量随滑移率增大
+  sqGain.gain.setTargetAtTime(active && slip > .2 && kmh > 3 ? Math.min(.16, slip * .18) : 0, t, .03);
+  sq.frequency.setTargetAtTime(1200 + slip * 900 + Math.random() * 120, t, .02);
 }
 export function boom() {
   if (!ctx) return; const s = ctx.createBufferSource(); s.buffer = initAudio.noise;

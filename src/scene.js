@@ -81,6 +81,26 @@ export function createScene(canvas) {
       p.life = 1; pos[pi * 3] = x + (Math.random() - .5) * 1.6; pos[pi * 3 + 1] = .2; pos[pi * 3 + 2] = z;
       p.x = (Math.random() - .5) * spread; p.y = Math.random() * spread; p.z = Math.random() * 2; p.i = pi; }
   }
+  // 刹车印：预分配的贴地四边形，循环复用
+  const SK = 600, skG = new THREE.PlaneGeometry(.26, 1), skM = new THREE.MeshBasicMaterial({ color: 0x0b0b0d, transparent: true, opacity: .55, depthWrite: false });
+  const skids = new THREE.InstancedMesh(skG, skM, SK); skids.count = 0; skids.frustumCulled = false; scene.add(skids);
+  let skI = 0, skLast = [null, null, null, null]; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), v3 = new THREE.Vector3(), sc = new THREE.Vector3();
+  const WX = [-.95, .95, -.95, .95], WZ = [-1.5, -1.5, 1.5, 1.5];
+  function addSkid(i, z) { const prev = skLast[i]; skLast[i] = z; if (prev == null || Math.abs(prev - z) < .05) return;
+    const len = Math.min(3, Math.abs(prev - z)); v3.set(WX[i], .012, (prev + z) / 2); sc.set(1, len, 1); m4.compose(v3, q, sc);
+    skids.setMatrixAt(skI, m4); skI = (skI + 1) % SK; skids.count = Math.max(skids.count, skI); skids.instanceMatrix.needsUpdate = true; }
+  function clearSkids() { skids.count = 0; skI = 0; skLast = [null, null, null, null]; }
+  // 速度线：相机前方的细长线段
+  const SL = 60, slPos = new Float32Array(SL * 6), slG = new THREE.BufferGeometry(); slG.setAttribute('position', new THREE.BufferAttribute(slPos, 3));
+  const slM = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }); const lines = new THREE.LineSegments(slG, slM); lines.frustumCulled = false; scene.add(lines);
+  const slD = Array.from({ length: SL }, () => ({ x: 0, y: 0, z: 0 })); const reseat = (d, z) => { const a = Math.random() * Math.PI * 2, rr = 4 + Math.random() * 6; d.x = Math.cos(a) * rr; d.y = 2 + Math.sin(a) * rr * .6; d.z = z - 10 - Math.random() * 60; if (d.y < .3) d.y = .3 + Math.random(); };
+  // 路面外观
+  const roadMat = road.material;
+  function setSurface(k) { roadMat.color.setHex(k === 'wet' ? 0x8a93a6 : k === 'ice' ? 0xcfe6ff : 0xffffff); roadMat.needsUpdate = true; scene.fog.color.setHex(k === 'ice' ? 0xc7d4e8 : k === 'wet' ? 0x8f8aa0 : 0xe0867a); }
+  // 画质分级：0 全开；1 关动态模糊；2 再关阴影；3 再降分辨率
+  let quality = 0; const blurEl = document.getElementById('blur');
+  function setQuality(qv) { quality = qv; r.shadowMap.enabled = qv < 2; sun.castShadow = qv < 2; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
+    r.setPixelRatio(qv >= 3 ? Math.min(devicePixelRatio, 1) * .7 : Math.min(devicePixelRatio, 2)); resize(); if (blurEl && qv >= 1) blurEl.style.opacity = 0; }
   const shake = { a: 0 };
   function resize() { const w = innerWidth, h = innerHeight; r.setSize(w, h, false); cam.aspect = w / h; cam.fov = w < h ? 72 : 58; cam.updateProjectionMatrix(); }
   addEventListener('resize', resize); resize();
@@ -94,18 +114,23 @@ export function createScene(canvas) {
     car.lights.material.color.setHex(st.F > 50 ? 0xff1a1a : 0x661010);
     if (st.flip) { car.g.rotation.z = st.flip.rz; car.g.rotation.x = st.flip.rx; car.g.position.y = st.flip.y; car.g.position.x = st.flip.dx; }
     else { car.g.rotation.set(0, 0, 0); }
-    if (st.F > 500 && st.v > 3) emit(0, z + 2, 1, .6);
+    if (st.slip) for (let i = 0; i < 4; i++) { if (st.slip[i] > .5 && st.v > .5) { addSkid(i, z + WZ[i]); if (Math.random() < .5) emit(WX[i], z + WZ[i], 1, .6); } else skLast[i] = null; }
+    // 速度线与动态模糊（随车速增强）
+    const sp = Math.max(0, (kmh - 120) / 200); slM.opacity = quality < 1 ? Math.min(.55, sp) : 0;
+    for (let k = 0; k < SL; k++) { const d = slD[k]; if (d.z > z + 6 || d.z < z - 80 || !d.z) reseat(d, z); const o = k * 6, L = 1 + kmh * .03;
+      slPos[o] = d.x; slPos[o + 1] = d.y; slPos[o + 2] = d.z; slPos[o + 3] = d.x; slPos[o + 4] = d.y; slPos[o + 5] = d.z + L; }
+    slG.attributes.position.needsUpdate = true; if (blurEl && quality < 1) blurEl.style.opacity = Math.min(.8, sp).toFixed(2);
     for (const p of vel) if (p.life > 0) { p.life -= dt * .8; const i = p.i * 3; pos[i] += p.x * dt; pos[i + 1] += (p.y + .8) * dt; pos[i + 2] += p.z * dt; if (p.life <= 0) pos[i + 1] = -10; }
     pg.attributes.position.needsUpdate = true;
     for (const it of pool) if (it.o.position.z > z + 30) it.o.position.z -= it.span;
     const back = 9 + kmh * .012, high = 3.2 + kmh * .003;
-    shake.a *= .9; const sx = (Math.random() - .5) * shake.a, sy = (Math.random() - .5) * shake.a;
+    shake.a *= .9; const sa = shake.a + (st.flip ? 0 : kmh / 320 * .12 + (st.maxSlip > .2 ? .08 : 0)); const sx = (Math.random() - .5) * sa, sy = (Math.random() - .5) * sa;
     cam.position.set(sx + (st.camSide || 0), high + sy, z + back);
-    cam.lookAt(0, 1.2, z - 12); cam.fov += ((innerWidth < innerHeight ? 72 : 58) + kmh * .05 - cam.fov) * .1; cam.updateProjectionMatrix();
+    cam.lookAt(0, 1.2, z - 12); cam.fov += ((innerWidth < innerHeight ? 72 : 58) + kmh * .07 - cam.fov) * .1; cam.updateProjectionMatrix();
     sun.position.set(-30, 40, z - 60); sun.target.position.set(0, 0, z);
     r.render(scene, cam);
   }
-  return { render, emit, shake, setPlate };
+  return { render, emit, shake, setPlate, setSurface, setQuality, clearSkids, get quality() { return quality; } };
 }
 function makeCar() {
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);

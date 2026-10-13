@@ -3,25 +3,31 @@
 <meta name="theme-color" content="#1a1428"><title>极限刹车 · 点刹挑战</title>
 <link rel="stylesheet" href="./src/style.css"></head><body>
 <canvas id="c"></canvas>
+<div id="blur"></div>
 <div id="hud" class="hidden">
   <div class="top"><div class="box"><b id="spd">0</b><small>km/h</small></div>
   <div class="box dist"><small>距路障</small><b id="dst">2600</b><small>m</small><div class="bar"><i id="dbar"></i></div></div></div>
   <div class="gauge"><div class="gfill" id="gf"></div><div class="red"></div><span class="gl">1612N</span><b id="fn">0 N</b></div>
   <div id="hint">车速 ≥100 km/h 后 按住屏幕 / 空格 刹车</div>
+  <div id="tags"><span id="tSurf"></span><span id="tAbs"></span><span id="tLock" class="hidden">抱死</span></div>
+  <div id="tut" class="hidden"><i id="tutN"></i><p id="tutT"></p><button id="tutSkip">跳过</button></div>
   <button id="brake" aria-label="刹车">刹</button>
 </div>
 <div id="toast"></div>
 <div id="menu" class="panel">
   <h1>极限刹车<span>点刹挑战</span></h1>
-  <p class="rule">全油门冲刺，车速过 <b>100</b> 后才能刹车（一刹即断动力）。<br>按住越久力度涨得越快，超过 <b class="r">1612 N</b> 踏板就断！<br>点刹控力，在 <b>2600 m</b> 路障前停下。</p>
+  <p class="rule">全油门冲刺，最高 320 km/h，过 <b>100</b> 后才能刹车（一刹即断动力）。<br>按住越久力度涨得越快，超过 <b class="r">1612 N</b> 踏板就断。<br>在 <b>2600 m</b> 路障前停下，刹得越快分越高。</p>
+  <div class="seg" id="surf"><button data-v="dry">干燥</button><button data-v="wet">湿滑</button><button data-v="ice">结冰</button></div>
+  <label class="sw"><input type="checkbox" id="abs" checked> ABS 防抱死 <small id="absNote">（关闭后得分 ×1.2）</small></label>
   <label>车牌昵称 <input id="plate" maxlength="8" placeholder="粤B·12345"></label>
   <button id="start" class="btn">开始挑战</button>
   <h3>本机排行榜</h3><ol id="lb"></ol>
-  <p class="foot">得分 = 初速² ÷ 刹车用时^1.7 · 原创致敬作品</p>
+  <p class="foot">得分 = 初速² ÷ 刹车用时^1.7（ABS 关 ×1.2）· 车辆与场景均为原创</p>
 </div>
 <div id="cd" class="hidden"></div>
 <div id="result" class="panel hidden">
   <h2 id="rt"></h2><p id="rd"></p><canvas id="chart" width="560" height="200"></canvas>
-  <div class="row"><button id="again" class="btn">再来一次</button><button id="home" class="btn ghost">返回菜单</button></div>
+  <div class="row"><button id="share" class="btn">生成成绩卡</button><button id="again" class="btn">再来一次</button><button id="home" class="btn ghost">返回菜单</button></div>
 </div>
+<div id="card" class="panel hidden"><img id="cardImg" alt="成绩卡"><div class="row"><button id="cardShare" class="btn">分享</button><a id="cardDl" class="btn ghost" download="刹车成绩.png">保存图片</a><button id="cardClose" class="btn ghost">关闭</button></div></div>
 <script type="module" src="./src/main.js"></script></body></html>

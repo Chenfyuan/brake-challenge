@@ -1,5 +1,7 @@
 import { createScene } from './scene.js';
-import { createSim, step, P } from './physics.js';
+import { createSim, step, P, SURF } from './physics.js';
+import { track } from './track.js';
+import { makeCard, SHARE_URL, verdict } from './card.js';
 import * as A from './audio.js';
 const $ = id => document.getElementById(id);
 const view = createScene($('c'));
@@ -10,29 +12,53 @@ function renderLB() { const l = lb(); $('lb').innerHTML = l.length ? l.map(e => 
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function saveScore(e) { const l = lb(); l.push(e); l.sort((a, b) => b.score - a.score); localStorage.setItem(LB_KEY, JSON.stringify(l.slice(0, 10))); return l.indexOf(e); }
 $('plate').value = localStorage.getItem('brake-plate') || '';
+// 路面与 ABS 选项（首局默认干燥 + ABS 开）
+let surface = localStorage.getItem('brake-surf') || 'dry';
+const firstRun = !localStorage.getItem('brake-tut');
+if (firstRun) surface = 'dry';
+const syncSeg = () => document.querySelectorAll('#surf button').forEach(b => b.classList.toggle('on', b.dataset.v === surface));
+document.querySelectorAll('#surf button').forEach(b => b.onclick = () => { surface = b.dataset.v; localStorage.setItem('brake-surf', surface); syncSeg(); });
+syncSeg(); $('abs').checked = firstRun ? true : localStorage.getItem('brake-abs') !== '0';
+$('abs').onchange = () => localStorage.setItem('brake-abs', $('abs').checked ? '1' : '0');
+// 新手引导：首局三步共 10 秒
+const TUT = ['按住刹车，看力度条往上涨。', '关掉 ABS 后踩太猛会抱死打滑，反而刹得更远。', '过了 1612 N 的红线，踏板就断了。点一下松一下，稳住。'];
+let tutTimers = [];
+function runTutorial() { const el = $('tut'); el.classList.remove('hidden'); $('hint').classList.add('hidden'); const dur = [3000, 3500, 3500]; let t = 0;
+  TUT.forEach((m, i) => { tutTimers.push(setTimeout(() => { $('tutN').textContent = `新手引导 ${i + 1}/3`; $('tutT').textContent = m; }, t)); t += dur[i]; });
+  tutTimers.push(setTimeout(stopTutorial, t)); localStorage.setItem('brake-tut', '1'); }
+function stopTutorial() { const was = tutTimers.length; tutTimers.forEach(clearTimeout); tutTimers = []; $('tut').classList.add('hidden'); if (was && phase === 'run' && !sim.powerCut) $('hint').classList.remove('hidden'); }
+$('tutSkip').onclick = stopTutorial;
+// 性能：帧率低于 30 时依次关动态模糊 → 阴影 → 降分辨率
+let fpsN = 0, fpsT = performance.now(), lowCount = 0; window.__fps = [];
+function perf(now) { fpsN++; if (now - fpsT < 1000) return; const fps = fpsN * 1000 / (now - fpsT); fpsN = 0; fpsT = now; window.__fps.push(Math.round(fps));
+  if (phase === 'run' || phase === 'countdown') { lowCount = fps < 30 ? lowCount + 1 : 0; if (lowCount >= 2 && view.quality < 3) { view.setQuality(view.quality + 1); lowCount = 0; } } }
+let lastVib = 0;
 renderLB();
 let toastTimer; function toast(m) { $('toast').textContent = m; $('toast').classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('show'), 1200); }
 function start() {
   A.initAudio(); plate = ($('plate').value.trim() || '粤B·12345').slice(0, 8); localStorage.setItem('brake-plate', plate); view.setPlate(plate);
-  sim = createSim(); $('menu').classList.add('hidden'); $('result').classList.add('hidden'); $('hud').classList.remove('hidden');
+  sim = createSim({ surface, abs: $('abs').checked }); view.setSurface(surface); view.clearSkids(); track('start', { surface, abs: sim.abs });
+  $('tSurf').textContent = SURF[surface].name + '路面'; $('tAbs').textContent = 'ABS ' + (sim.abs ? '开' : '关'); $('menu').classList.add('hidden'); $('result').classList.add('hidden'); $('hud').classList.remove('hidden');
   $('hint').classList.remove('hidden'); phase = 'countdown'; let n = 3; $('cd').classList.remove('hidden'); $('cd').textContent = n; A.beep();
-  const iv = setInterval(() => { n--; if (n > 0) { $('cd').textContent = n; A.beep(); } else { clearInterval(iv); $('cd').textContent = 'GO!'; A.beep(true); phase = 'run'; acc = 0; setTimeout(() => $('cd').classList.add('hidden'), 500); } }, 800);
+  const iv = setInterval(() => { n--; if (n > 0) { $('cd').textContent = n; A.beep(); } else { clearInterval(iv); $('cd').textContent = 'GO!'; A.beep(true); phase = 'run'; acc = 0; if (firstRunPending) { firstRunPending = false; runTutorial(); } setTimeout(() => $('cd').classList.add('hidden'), 500); } }, 800);
 }
 $('start').onclick = start; $('again').onclick = start;
 $('home').onclick = () => { $('result').classList.add('hidden'); $('hud').classList.add('hidden'); $('menu').classList.remove('hidden'); phase = 'menu'; renderLB(); };
 // 输入：全屏按住 / 刹车键 / 空格
 const press = on => { if (phase !== 'run') return; sim.pressed = on; $('brake').classList.toggle('on', on); };
-addEventListener('pointerdown', e => { if (phase === 'run' && !e.target.closest('.panel')) { e.preventDefault(); press(true); } }, { passive: false });
+addEventListener('pointerdown', e => { if (phase === 'run' && !e.target.closest('.panel,#tut')) { e.preventDefault(); press(true); } }, { passive: false });
 addEventListener('pointerup', () => press(false)); addEventListener('pointercancel', () => press(false));
 addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) press(true); } if (e.code === 'Enter' && (phase === 'menu' || phase === 'result') && document.activeElement !== $('plate')) start(); });
 addEventListener('keyup', e => { if (e.code === 'Space') press(false); });
 addEventListener('contextmenu', e => e.preventDefault());
-let warned = 0;
+let warned = 0, firstRunPending = firstRun;
 function frame(now) {
-  requestAnimationFrame(frame); let dt = Math.min(.1, (now - last) / 1000); last = now;
+  requestAnimationFrame(frame); perf(now); let dt = Math.min(.1, (now - last) / 1000); last = now;
   if (phase === 'run') {
     acc += dt; while (acc >= P.DT && sim.state === 'run') { step(sim); acc -= P.DT; if (sim.warn && now - warned > 1300) { warned = now; toast('车速未到 100 km/h，还不能刹车'); } }
-    sim.pitch = (sim.pitch || 0) + ((sim.powerCut ? sim.F / P.BREAK_N * .06 : -.015) - (sim.pitch || 0)) * .15;
+    sim.pitch = (sim.pitch || 0) + ((sim.powerCut ? sim.ax / 10 * .06 : -.015) - (sim.pitch || 0)) * .15;
+    $('tLock').classList.toggle('hidden', !(sim.maxSlip > .5));
+    if (sim.maxSlip > .2 && sim.v > 1 && now - lastVib > 120) { lastVib = now; navigator.vibrate?.(40); }
     if (sim.powerCut) $('hint').classList.add('hidden');
     if (sim.state !== 'run') end();
   } else if (phase === 'crash') {
@@ -48,11 +74,11 @@ function frame(now) {
   $('dst').textContent = Math.round(left); $('dbar').style.width = (sim.x / P.BARRIER * 100) + '%';
   $('gf').style.height = Math.min(100, sim.F / (P.BREAK_N * 1.25) * 100) + '%'; $('fn').textContent = Math.round(sim.F) + ' N';
   $('spd').style.color = kmh >= 100 && !sim.powerCut ? '#7CFFB2' : '#fff';
-  A.updateAudio(kmh, !sim.powerCut, phase === 'run' ? sim.F : 0, phase === 'run' || phase === 'crash');
+  A.updateAudio(kmh, !sim.powerCut, phase === 'run' ? sim.F : 0, phase === 'run' || phase === 'crash', phase === 'run' ? sim.maxSlip : 0);
   view.render(sim, dt);
 }
 function end() {
-  press(false);
+  press(false); stopTutorial(); track('end', { result: sim.state === 'stop' ? 'stop' : sim.reason, dist: sim.dist, v0: sim.v0, surface: sim.surface, abs: sim.abs });
   if (sim.state === 'crash') {
     phase = 'crash'; crashT = performance.now(); endT = 0; A.boom(); if (sim.reason === 'pedal') A.snap(); view.shake.a = 1.2;
     const hard = sim.v / P.VMAX; sim.F = sim.reason === 'pedal' ? sim.F : 0;
@@ -65,7 +91,7 @@ function showResult() {
   if (s.state === 'stop') {
     const rank = saveScore({ plate, score: s.score, v0: Math.round(s.v0), t: +s.tBrake.toFixed(2), d: Math.round(P.BARRIER - P.NOSE - s.x), at: Date.now() });
     $('rt').textContent = '🏁 成功刹停！'; $('rt').style.color = '#7CFFB2';
-    $('rd').innerHTML = `得分 <b style="font-size:28px;color:#ffd29d">${s.score}</b>${rank >= 0 && rank < 10 ? `（本机第 ${rank + 1} 名）` : ''}<br>初速 ${Math.round(s.v0)} km/h · 刹车用时 ${s.tBrake.toFixed(2)} s · 距路障 ${(P.BARRIER - P.NOSE - s.x).toFixed(1)} m`;
+    $('rd').innerHTML = `得分 <b style="font-size:28px;color:#ffd29d">${s.score}</b>${rank >= 0 && rank < 10 ? `（本机第 ${rank + 1} 名）` : ''}<br>初速 ${Math.round(s.v0)} km/h · 刹车用时 ${s.tBrake.toFixed(2)} s · 刹车距离 ${s.dist.toFixed(1)} m · 最大踏板力 ${Math.round(s.Fmax)} N<br>${verdict(s)}`;
   } else {
     $('rt').textContent = s.reason === 'pedal' ? '💥 刹车踏板踩断了！' : '💥 撞上路障了！'; $('rt').style.color = '#ff6b6b';
     $('rd').innerHTML = s.reason === 'pedal' ? `力度超过 1612 N，踏板断裂失控翻车。<br>试试点一下松一下，把力度卡在红线下。` : `${s.powerCut ? '刹得不够狠' : '一直没刹车'}，以 ${Math.round(s.curve.at(-1)?.v ?? s.v * 3.6)} km/h 撞上路障。<br>车速过 100 就可以开始点刹。`;
@@ -82,4 +108,18 @@ function drawChart(c) {
   x.fillStyle = '#4fd1c5'; x.fillText('车速', pad, 18); x.fillStyle = '#f6ad55'; x.fillText('踏板力', pad + 50, 18); x.fillStyle = '#ff6b6b'; x.fillText('1612N 断裂线', pad + 115, 18);
   x.fillStyle = '#fff8'; x.fillText(T.toFixed(1) + 's', W - pad - 30, H - 8);
 }
+// 分享卡片
+let cardUrl = '', cardBlob = null;
+$('share').onclick = () => { const c = makeCard(sim, plate); cardUrl = c.toDataURL('image/png'); $('cardImg').src = cardUrl; $('cardDl').href = cardUrl;
+  c.toBlob(b => cardBlob = b); $('result').classList.add('hidden'); $('card').classList.remove('hidden'); };
+$('cardClose').onclick = () => { $('card').classList.add('hidden'); $('result').classList.remove('hidden'); };
+$('cardDl').onclick = () => track('share', { via: 'download' });
+$('cardShare').onclick = async () => {
+  track('share', { via: 'system' }); const text = `${verdict(sim)}｜你能比我刹得更近吗？`;
+  try { const file = cardBlob && new File([cardBlob], '刹车成绩.png', { type: 'image/png' });
+    if (file && navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], text, url: SHARE_URL });
+    else if (navigator.share) await navigator.share({ text, url: SHARE_URL });
+    else { await navigator.clipboard.writeText(text + ' ' + SHARE_URL); toast('链接已复制，图片可长按保存'); }
+  } catch {}
+};
 requestAnimationFrame(frame);
